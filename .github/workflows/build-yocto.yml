@@ -20,29 +20,33 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up latest Python
-        uses: actions/setup-python@v5
+      - name: Checkout pika-spark/lmp-manifest
+        uses: actions/checkout@v4
         with:
-          python-version: "*"
+          repository: pika-spark/lmp-manifest
+          path: 'lmp-manifest'
+          ref: pika-spark
 
       - name: Build Docker image
         run: |
-          git clone https://github.com/pika-spark/lmp-manifest.git
-          cd lmp-manifest
           docker build -t yocto-build ./lmp-manifest
+
+      - name: Check out this repository containing build script
+        uses: actions/checkout@v4
+        with:
+          path: 'yocto_ws'
+
+      - name: Create a new user and assign Yocto workspace
+        run: |
+          sudo useradd -m builder --uid 1024
+          echo "builder:builder" | sudo chpasswd
+          sudo usermod -aG sudo builder
+          sudo chown --recursive builder:builder ${{ github.workspace }}/yocto_ws 
 
       - name: Build Yocto image
         run: |
-          docker run -v $(pwd):/dockerVolume -it yocto-build bash
-          su builder
-          git config --global user.email "you@example.com"
-          git config --global user.name "Your Name"
-          cd /dockerVolume
-          repo init -u https://github.com/pika-spark/lmp-manifest.git -m arduino.xml -b pika-spark
-          repo sync
-          DISTRO=lmp-base-xwayland MACHINE=portenta-x8 . setup-environment
-          echo "ACCEPT_FSL_EULA = \"1\"" >> conf/local.conf
-          bitbake lmp-devel-arduino-image
-
+          docker run --rm \
+            -v ${{ github.workspace }}/yocto_ws:/workdir \
+            -u $(id -u builder):$(id -g builder) \
+            yocto-build \
+            /bin/bash -c "cd /workdir && bash portenta-x8_build.sh"
