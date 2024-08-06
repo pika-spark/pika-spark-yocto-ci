@@ -1,0 +1,48 @@
+name: Build Yocto Image
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # run every Tuesday at 3 AM UTC
+    - cron: "0 3 * * 2"
+  workflow_dispatch:
+  repository_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up latest Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "*"
+
+      - name: Build Docker image
+        run: |
+          git clone https://github.com/pika-spark/lmp-manifest.git
+          cd lmp-manifest
+          docker build -t yocto-build ./lmp-manifest
+
+      - name: Build Yocto image
+        run: |
+          docker run -v $(pwd):/dockerVolume -it yocto-build bash
+          su builder
+          git config --global user.email "you@example.com"
+          git config --global user.name "Your Name"
+          cd /dockerVolume
+          repo init -u https://github.com/pika-spark/lmp-manifest.git -m arduino.xml -b pika-spark
+          repo sync
+          DISTRO=lmp-base-xwayland MACHINE=portenta-x8 . setup-environment
+          echo "ACCEPT_FSL_EULA = \"1\"" >> conf/local.conf
+          bitbake lmp-devel-arduino-image
+
